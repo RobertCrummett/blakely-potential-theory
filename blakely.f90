@@ -16,10 +16,10 @@ subroutine sphere(xq,yq,zq,a,rho,xp,yp,zp,gx,gy,gz)
 !    Gravitatational components (gx,gy,gz) in units of mGal.
 !
 implicit none
-real(8), parameter :: GAM=6.67e-11,SI2MG=1.e5,PI=3.14159265,KM2M=1.e3
-real(8), intent(in) :: xq,yq,zq,a,rho,xp,yp,zp
-real(8), intent(out) :: gx,gy,gz
-real(8) :: rx,ry,rz,r,r3,tmass
+real(4), parameter :: GAM=6.67e-11,SI2MG=1.e5,PI=3.14159265,KM2M=1.e3
+real(4), intent(in) :: xq,yq,zq,a,rho,xp,yp,zp
+real(4), intent(out) :: gx,gy,gz
+real(4) :: rx,ry,rz,r,r3,tmass
 
 rx=xp-xq
 ry=yp-yq
@@ -53,15 +53,15 @@ subroutine cylind(xq,zq,a,rho,xp,zp,gx,gz)
 !    Components of gravitational attraction (gx,gz) in mGal.
 !
 implicit none
-real(8), parameter :: GAM=6.67e-11,SI2MG=1.e5,PI=3.14159265,KM2M=1.e3
-real(8), intent(in) :: xq,zq,a,rho,xp,zp
-real(8), intent(out) :: gx,gz
-real(8) :: rx, rz, r2, tmass
+real(4), parameter :: GAM=6.67e-11,SI2MG=1.e5,PI=3.14159265,KM2M=1.e3
+real(4), intent(in) :: xq,zq,a,rho,xp,zp
+real(4), intent(out) :: gx,gz
+real(4) :: rx, rz, r2, tmass
 
 rx=xp-xq
 rz=zp-zq
 r2=rx**2+rz**2
-if(r2.eq.0._8)then
+if(r2.eq.0.)then
         write(*,*) 'CYLIND: Bad argument detected.'
         stop
 endif
@@ -91,18 +91,18 @@ subroutine dipole(xq,yq,zq,a,mi,md,m,xp,yp,zp,bx,by,bz)
 !    units of nT.
 !
 implicit none
-real(8), parameter :: PI=3.14159265,T2NT=1.e9,CM=1.e-7
-real(8), intent(in) :: xq,yq,zq,a,mi,md,m,xp,yp,zp
-real(8), intent(out) :: bx,by,bz
-real(8) :: rx,ry,rz,r2,r,r5,dot,moment,mx,my,mz
+real(4), parameter :: PI=3.14159265,T2NT=1.e9,CM=1.e-7
+real(4), intent(in) :: xq,yq,zq,a,mi,md,m,xp,yp,zp
+real(4), intent(out) :: bx,by,bz
+real(4) :: rx,ry,rz,r2,r,r5,dot,moment,mx,my,mz
 
-call dircos(mi,md,0._8,mx,my,mz)
+call dircos(mi,md,0.,mx,my,mz)
 rx=xp-xq
 ry=yp-yq
 rz=zp-zq
 r2=rx**2+ry**2+rz**2
 r=sqrt(r2)
-if(r.eq.0._8)then
+if(r.eq.0.)then
         write(*,*) 'DIPOLE: Bad argument detected.'
         stop
 endif
@@ -117,7 +117,7 @@ by=by*T2NT
 bz=bz*T2NT
 end subroutine dipole
 
-real(8) function schmidt(n,m,theta)
+real(4) function schmidt(n,m,theta)
 !
 !  Returns Schmidt normalized associated Legendre polynomial.
 !  Requires function fac. Modified from Press et al. (1986)
@@ -129,11 +129,11 @@ real(8) function schmidt(n,m,theta)
 !    equal to n.
 !
 implicit none
-real(8), parameter :: D2RAD=.017453293
+real(4), parameter :: D2RAD=.017453293
 integer, intent(in) :: n,m
-real(8), intent(in) :: theta
+real(4), intent(in) :: theta
 integer :: i,nn
-real(8) :: x,fact,somx2,pmm,pmmp1,pnn,xnorm
+real(4) :: x,fact,somx2,pmm,pmmp1,pnn,xnorm
 
 interface
         integer function fac(n)
@@ -197,6 +197,8 @@ endif
 
 if (n.eq.0.or.n.eq.1) then
         fac=1
+else
+        fac=n
         fac2=fac
 30      fac2=fac2-1
         fac=fac*fac2
@@ -221,12 +223,12 @@ subroutine gbox(x0,y0,z0,x1,y1,z1,x2,y2,z2,rho,g)
 !    Vertical attraction of gravity g, in mGal.
 !
 implicit none
-real(8), parameter :: GAM=6.670e-11,TWOPI=6.2831853,SI2MG=1.e5,KM2M=1.e3
+real(4), parameter :: GAM=6.670e-11,TWOPI=6.2831853,SI2MG=1.e5,KM2M=1.e3
 integer, dimension(1:2), parameter :: SIGN=(/ -1, 1 /)
-real(8), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,z2,rho
-real(8), intent(out) :: g
-real(8) :: sum=0.,rijk,arg1,arg2,arg3
-real(8), dimension(1:2) :: x,y,z
+real(4), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,z2,rho
+real(4), intent(out) :: g
+real(4) :: sum=0.,rijk,arg1,arg2,arg3
+real(4), dimension(1:2) :: x,y,z
 integer :: ijk,i,j,k
 
 x(1)=x0-x1
@@ -252,8 +254,8 @@ do i=1,2
                                 write (*,*) 'GBOX: Bad field point'
                                 stop
                         endif
-                        arg2=dlog(arg2)
-                        arg3=dlog(arg3)
+                        arg2=alog(arg2)
+                        arg3=alog(arg3)
                         sum=sum+ijk*(z(k)*arg1 - x(i)*arg2 - y(j)*arg3)
                 enddo
         enddo
@@ -279,13 +281,13 @@ subroutine gpoly(x0,z0,xcorn,zcorn,ncorn,rho,g)
 !    Vertical attraction of gravity g, in mGal.
 !
 implicit none
-real(8), parameter :: GAM=6.67e-11,SI2MG=1.e5,KM2M=1.e3
-real(8), intent(in) :: x0,z0,rho
+real(4), parameter :: GAM=6.67e-11,SI2MG=1.e5,KM2M=1.e3
+real(4), intent(in) :: x0,z0,rho
 integer, intent(in) :: ncorn
-real(8), dimension(ncorn), intent(in) :: xcorn,zcorn
-real(8), intent(out) :: g
+real(4), dimension(ncorn), intent(in) :: xcorn,zcorn
+real(4), intent(out) :: g
 integer :: n,n2
-real(8) :: sum=0.,x1,z1,x2,z2,r1sq,r2sq,denom,alpha,beta,factor,term1,term2
+real(4) :: sum=0.,x1,z1,x2,z2,r1sq,r2sq,denom,alpha,beta,factor,term1,term2
 
 do n=1,ncorn
         if (n.eq.ncorn) then
@@ -313,7 +315,7 @@ do n=1,ncorn
         alpha=(x2-x1)/denom
         beta=(x1*z2-x2*z1)/denom
         factor=beta/(1.+alpha**2)
-        term1=0.5*(dlog(r2sq)-dlog(r1sq))
+        term1=0.5*(alog(r2sq)-alog(r1sq))
         term2=atan2(z2,x2)-atan2(z1,x1)
         sum=sum+factor*(term1-alpha*term2)
 enddo
@@ -349,14 +351,14 @@ subroutine mbox(x0,y0,z0,x1,y1,z1,x2,y2,mi,md,fi,fd,m,theta,t)
 !    Total-field anomaly t, in nT.
 !
 implicit none
-real(8), parameter :: CM=1.e-7,T2NT=1.e9
-real(8), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,mi,md,fi,fd,m,theta
-real(8), intent(out) :: t
+real(4), parameter :: CM=1.e-7,T2NT=1.e9
+real(4), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,mi,md,fi,fd,m,theta
+real(4), intent(out) :: t
 integer :: i,j
-real(8) :: ma,mb,mc,fa,fb,fc,fm1,fm2,fm3,fm4,fm5,fm6, &
+real(4) :: ma,mb,mc,fa,fb,fc,fm1,fm2,fm3,fm4,fm5,fm6, &
            h,hsq,alphasq,sign,r0sq,r0,r0h,alphabeta, &
            arg1,arg2,arg3,arg4,tlog,tatan
-real(8), dimension(2) :: alpha,beta
+real(4), dimension(2) :: alpha,beta
 
 call dircos(mi,md,theta,ma,mb,mc)
 call dircos(fi,fd,theta,fa,fb,fc)
@@ -387,8 +389,8 @@ do i=1,2
                 arg2=(r0-beta(j))/(r0+beta(j))
                 arg3=alphasq+r0h+hsq
                 arg4=r0sq+r0h-alphasq
-                tlog=fm3*dlog(arg1)/2.+fm2*dlog(arg2)/2. &
-                    -fm1*dlog(r0+h)
+                tlog=fm3*alog(arg1)/2.+fm2*alog(arg2)/2. &
+                    -fm1*alog(r0+h)
                 tatan=-fm4*atan2(alphabeta,arg3) &
                       -fm5*atan2(alphabeta,arg4) &
                       -fm6*atan2(alphabeta,r0h)
@@ -413,10 +415,10 @@ subroutine dircos(incl,decl,azim,a,b,c)
 !    a,b,c: the three direction cosines.
 !
 implicit none
-real(8), parameter :: D2RAD=.017453293
-real(8), intent(in) :: incl,decl,azim
-real(8), intent(out) :: a,b,c
-real(8) :: xincl,xdecl,xazim
+real(4), parameter :: D2RAD=.017453293
+real(4), intent(in) :: incl,decl,azim
+real(4), intent(out) :: a,b,c
+real(4) :: xincl,xdecl,xazim
 
 xincl=incl*D2RAD
 xdecl=decl*D2RAD
@@ -444,15 +446,15 @@ subroutine facmag(mx,my,mz,x0,y0,z0,x,y,z,n,fx,fy,fz)
 !    Three components of magnetic field (fx,fy,fz), in nT.
 !
 implicit none
-real(8), parameter :: CM=1.e-7,T2NT=1.e9,EPS=1.e-20
-real(8), intent(in) :: mx,my,mz,x0,y0,z0
+real(4), parameter :: CM=1.e-7,T2NT=1.e9,EPS=1.e-20
+real(4), intent(in) :: mx,my,mz,x0,y0,z0
 integer, intent(in) :: n
-real(8), intent(out) :: fx,fy,fz
+real(4), intent(out) :: fx,fy,fz
 integer :: i,j
-real(8) :: nx,ny,nz,dot,rl,rn,px,py,pz,w,u1,v,w1,rk,us,v2s,v1s, &
+real(4) :: nx,ny,nz,dot,rl,rn,px,py,pz,w,u1,v,w1,rk,us,v2s,v1s, &
            a2,a1,f2,f1,rho2,rho1,r2,r1,fu2,fu1,fv2,fv1, &
            fw2,fw1,fu,fv,fw
-real(8), dimension(10) :: x,y,z,u,v2,v1,s,xk,yk,zk,xl,yl,zl
+real(4), dimension(10) :: x,y,z,u,v2,v1,s,xk,yk,zk,xl,yl,zl
 
 fx=0.
 fy=0.
@@ -502,24 +504,24 @@ do j=1,n
         r2=sqrt(us+v2s+w**2)
         r1=sqrt(us+v1s+w**2)
         if (w.ne.0.) then
-                fu2=(a2/f2)*dlog((r2+rho2)/abs(w)) &
-                    -.5*dlog((r2+v2(j))/(r2-v2(j)))
-                fu1=(a1/f1)*dlog((r1+rho1)/abs(w)) &
-                    -.5*dlog((r1+v1(j))/(r1-v1(j)))
-                fv2=(1./f2)*dlog((r2+rho2)/abs(w))
-                fv1=(1./f1)*dlog((r1+rho1)/abs(w))
+                fu2=(a2/f2)*alog((r2+rho2)/abs(w)) &
+                    -.5*alog((r2+v2(j))/(r2-v2(j)))
+                fu1=(a1/f1)*alog((r1+rho1)/abs(w)) &
+                    -.5*alog((r1+v1(j))/(r1-v1(j)))
+                fv2=(1./f2)*alog((r2+rho2)/abs(w))
+                fv1=(1./f1)*alog((r1+rho1)/abs(w))
                 fw2=atan2((a2*(r2-abs(w))),(r2+a2*a2*abs(w)))
                 fw1=atan2((a1*(r1-abs(w))),(r1+a1*a1*abs(w)))
                 fu=dot*(fu2-fu1)
                 fv=-dot*(fv2-fv1)
                 fw=(-w*dot/abs(w))*(fw2-fw1)
         else
-                fu2=(a2/f2)*(1.+dlog((r2+rho2)/EPS)) &
-                    -.5*dlog((r2+v2(j))/(r2-v2(j)))
-                fu1=(a1/f1)*(1.+dlog((r1+rho1)/EPS)) &
-                    -.5*dlog((r1+v1(j))/(r1-v1(j)))
-                fv2=(1./f2)*(1.+dlog((r2+rho2)/EPS))
-                fv1=(1./f1)*(1.+dlog((r1+rho1)/EPS))
+                fu2=(a2/f2)*(1.+alog((r2+rho2)/EPS)) &
+                    -.5*alog((r2+v2(j))/(r2-v2(j)))
+                fu1=(a1/f1)*(1.+alog((r1+rho1)/EPS)) &
+                    -.5*alog((r1+v1(j))/(r1-v1(j)))
+                fv2=(1./f2)*(1.+alog((r2+rho2)/EPS))
+                fv1=(1./f1)*(1.+alog((r1+rho1)/EPS))
                 fu=dot*(fu2-fu1)
                 fv=-dot*(fv2-fv1)
                 fw=0.
@@ -542,9 +544,9 @@ subroutine plane(x0,y0,z0,x1,y1,z1,x2,y2,z2,x3,y3,z3,x,y,z,r)
 !  transformation of coordinates systems.
 !
 implicit none
-real(8), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,z2,x3,y3,z3
-real(8), intent(out) :: x,y,z,r
-real(8) :: x2n,y2n,z2n,x0n,y0n,z0n,x3n,y3n,z3n,a,t11,t12,t13, &
+real(4), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,z2,x3,y3,z3
+real(4), intent(out) :: x,y,z,r
+real(4) :: x2n,y2n,z2n,x0n,y0n,z0n,x3n,y3n,z3n,a,t11,t12,t13, &
            t21,t22,t23,t31,t32,t33,tx0,tz0,cx,cy,cz,c,dx,dy,dz,d
 
 x2n=x2-x1
@@ -589,9 +591,9 @@ subroutine line(x0,y0,z0,x1,y1,z1,x2,y2,z2,x,y,z,v1,v2,r)
 !  transformation of coordinate systems.
 !
 implicit none
-real(8), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,z2
-real(8), intent(out) :: x,y,z,v1,v2,r
-real(8) :: tx0,ty0,tz0,tx2,ty2,tz2,a,cx,cy,cz,c,dx,dy,dz,d, &
+real(4), intent(in) :: x0,y0,z0,x1,y1,z1,x2,y2,z2
+real(4), intent(out) :: x,y,z,v1,v2,r
+real(4) :: tx0,ty0,tz0,tx2,ty2,tz2,a,cx,cy,cz,c,dx,dy,dz,d, &
            tt11,tt12,tt13,tt21,tt22,tt23,tt31,tt32,tt33,u0
 
 tx0=x0-x1
@@ -628,8 +630,8 @@ subroutine cross(ax,ay,az,bx,by,bz,cx,cy,cz,r)
 !               (cx,cy,cz) = (ax, ay, az) X (bx, by, bz)
 !
 implicit none
-real(8), intent(in) :: ax,ay,az,bx,by,bz
-real(8), intent(out) :: cx,cy,cz,r
+real(4), intent(in) :: ax,ay,az,bx,by,bz
+real(4), intent(out) :: cx,cy,cz,r
 cx=ay*bz-az*by
 cy=az*bx-ax*bz
 cz=ax*by-ay*bx
@@ -645,9 +647,9 @@ subroutine rot(ax,ay,az,bx,by,bz,nx,ny,nz,px,py,pz,s)
 !  1 if anticlockwise, -1 if clockwise, or 0 if collinear.
 !
 implicit none
-real(8), intent(in) :: ax,ay,az,bx,by,bz,nx,ny,nz,px,py,pz
-real(8), intent(out) :: s
-real(8) :: x,y,z,cx,cy,cz,c,u,v,w,d
+real(4), intent(in) :: ax,ay,az,bx,by,bz,nx,ny,nz,px,py,pz
+real(4), intent(out) :: s
+real(4) :: x,y,z,cx,cy,cz,c,u,v,w,d
 x=bx-ax
 y=by-ay
 z=bz-az
@@ -689,11 +691,11 @@ subroutine ribbon(x0,z0,x1,z1,x2,z2,mx,mz,fx,fz,ier)
 !             continues).
 !
 implicit none
-real(8), parameter :: PI=3.14159265,SMALL=1.e-18,CM=1.e-7,T2NT=1.e9
-real(8), intent(in) :: x0,z0,x1,z1,x2,z2,mx,mz
-real(8), intent(out) :: fx,fz
+real(4), parameter :: PI=3.14159265,SMALL=1.e-18,CM=1.e-7,T2NT=1.e9
+real(4), intent(in) :: x0,z0,x1,z1,x2,z2,mx,mz
+real(4), intent(out) :: fx,fz
 integer, intent(out) :: ier
-real(8) :: sx,sz,s,qs,rx1,rz1,rx2,rz2,r1,r2,theta1, &
+real(4) :: sx,sz,s,qs,rx1,rz1,rx2,rz2,r1,r2,theta1, &
            theta2,angle,flog,factor
 ier=0
 sx=x2-x1
@@ -739,7 +741,7 @@ if (angle.lt.-PI) angle=angle+2.*PI
 !  -- If field point is too close to side, signal error
 !
 if (abs(angle).gt.(.995*PI)) ier=2
-flog=dlog(r2)-dlog(r1)
+flog=alog(r2)-alog(r1)
 factor=-2.*CM*qs*T2NT
 fx=factor*(sx*flog-sz*angle)
 fz=factor*(sz*flog+sx*angle)
