@@ -1,7 +1,3 @@
-      program main
-      print *, 'Hello Blakely!'
-      end
-
       subroutine sphere(xq,yq,zq,a,rho,xp,yp,zp,gx,gy,gz)
 c
 c  Subroutine SPHERE calculates the three components of gravitational
@@ -675,5 +671,848 @@ c
     8       cx(i)=cx(i)+ctemp
       l=istep
       if(l.lt.lx)go to 6
+      return
+      end
+
+      subroutine fourn(data,nn,ndim,isign)
+c
+c  Replaces DATA by its NDIM-dimensional discrete Fourier transform,
+c  is ISIGN is input as 1.  NN is an integer array of length NDIM,
+c  containing the lengths of each dimension (number of complex values),
+c  which must all be powers of 2.  DATA is a real array of length twice
+c  the product of these lengths, in which the data are stored as in a
+c  multidimensional complex Fortran array.  If ISIGN is input as -1,
+c  DATA is replaced by its inverse transform times the product of the
+c  lengths of all dimensions.  From Press et al. (1986, pp. 451-3).
+c
+      real*8 wr,wi,wpr,wpi,wtemp,theta
+      dimension nn(ndim),data(*)
+      ntot=1
+      do 11 iidim=1,ndim
+        ntot=ntot*nn(iidim)
+11    continue
+      nprev=1
+      do 18 iidim=1,ndim
+        n=nn(iidim)
+        nrem=ntot/(n*nprev)
+        ip1=2*nprev
+        ip2=ip1*n
+        ip3=ip2*nrem
+        i2rev=1
+        do 14 i2=1,ip2,ip1
+          if(i2.lt.i2rev)then
+            do 13 i1=i2,i2+ip1-2,2
+              do 12 i3=i1,ip3,ip2
+                i3rev=i2rev+i3-i2
+                tempr=data(i3)
+                tempi=data(i3+1)
+                data(i3)=data(i3rev)
+                data(i3+1)=data(i3rev+1)
+                data(i3rev)=tempr
+                data(i3rev+1)=tempi
+12            continue
+13          continue
+          endif
+          ibit=ip2/2
+1         if ((ibit.ge.ip1).and.(i2rev.gt.ibit)) then
+            i2rev=i2rev-ibit
+            ibit=ibit/2
+          go to 1
+          endif
+          i2rev=i2rev+ibit
+14      continue
+        ifp1=ip1
+2       if(ifp1.lt.ip2)then
+          ifp2=2*ifp1
+          theta=isign*6.28318530717959d0/(ifp2/ip1)
+          wpr=-2.d0*dsin(0.5d0*theta)**2
+          wpi=dsin(theta)
+          wr=1.d0
+          wi=0.d0
+          do 17 i3=1,ifp1,ip1
+            do 16 i1=i3,i3+ip1-2,2
+              do 15 i2=i1,ip3,ifp1
+                k1=i2
+                k2=k1+ifp1
+                tempr=sngl(wr)*data(k2)-sngl(wi)*data(k2+1)
+                tempi=sngl(wr)*data(k2+1)+sngl(wi)*data(k2)
+                data(k2)=data(k1)-tempr
+                data(k2+1)=data(k1+1)-tempi
+                data(k1)=data(k1)+tempr
+                data(k1+1)=data(k1+1)+tempi
+15            continue
+16          continue
+            wtemp=wr
+            wr=wr*wpr-wi*wpi+wr
+            wi=wi*wpr+wtemp*wpi+wi
+17        continue
+          ifp1=ifp2
+        go to 2
+        endif
+        nprev=n*nprev
+18    continue
+      return
+      end
+
+      subroutine glayer(rho,nx,ny,dx,dy,z1,z2,store)
+c
+c  Subroutine GLAYER calculates the vertical gravitational
+c  attraction on a two-dimensional grid caused by a two-
+c  dimensional density confined to a horizontal layer.  The
+c  following steps are involved:  (1) Fourier transform the
+c  density, (2) multiply by the earth filter, and (3) inverse
+c  Fourier transform the product.  Density is specified on a
+c  rectangular grid with x and y axes directed north and east,
+c  respectively.  z axis is down.  Requires subroutines
+c  FOURN, KVALUE, and GFILT.
+c
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c         (NOTE: Both nx and ny must be powers of two.)
+c    rho - a one-dimensional real array containing the
+c         two-dimensional density, in kg/(m**3).  Elements
+c         should be in order of west to east, then south to
+c         north (i.e., element 1 is the southwest corner,
+c         element ny is the southeast corner, element
+c         (nx-1)*ny+1 is the northwest corner, and element ny*nx
+c         is the northeast corner).
+c    store - a one-dimensional real array used internally.
+c         It should be dimensioned at least 2*nx*ny.
+c    dx - sample interval in the x direction, in km.
+c    dy - sample interval in the y direction, in km.
+c    z1 - depth to top of layer, in km.  Must be > 0.
+c    z2 - depth to bottom of layer, in km.  Must be > z1.
+c
+c  Output parameters:
+c    rho - upon output, rho will contain the gravity anomaly,
+c         in mGal, with same orientation as before.
+c
+      complex crho,cmplx
+      real kx,ky,km2m
+      dimension rho(nx*ny),store(2*nx*ny),nn(2)
+      data pi/3.14159265/,si2mg/1.e5/,km2m/1.e3/
+      index(i,j,ncol)=(j-1)*ncol+i
+      nn(1)=ny
+      nn(2)=nx
+      ndim=2
+      dkx=2.*pi/(nx*dx)
+      dky=2.*pi/(ny*dy)
+      do 10 j=1,nx
+         do 10 i=1,ny
+            ij=index(i,j,ny)
+            store(2*ij-1)=rho(ij)
+   10       store(2*ij)=0.
+      call fourn(store,nn,ndim,-1)
+      do 20 j=1,nx
+         do 20 i=1,ny
+            ij=index(i,j,ny)
+            call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+            crho=cmplx(store(2*ij-1),store(2*ij))
+            crho=crho*gfilt(kx,ky,z1,z2)
+            store(2*ij-1)=real(crho)
+   20       store(2*ij)=aimag(crho)
+      call fourn(store,nn,ndim,+1)
+      do 30 j=1,nx
+         do 30 i=1,ny
+            ij=index(i,j,ny)
+   30       rho(ij)=store(2*ij-1)*si2mg*km2m/(nx*ny)
+      return
+      end
+
+      subroutine mlayer(mag,nx,ny,dx,dy,z1,z2,mi,md,fi,fd,store)
+c
+c  Subroutine MLAYER calculates the total-field anomaly on a two-
+c  dimensional grid due to a horizontal layer with two-
+c  dimensional magnetization.  The following steps are involved:
+c  (1) Fourier transform the magnetization, (2) multiply by the
+c  earth filter, and (3) inverse Fourier transform the product.
+c  Magnetization is specified on a rectangular grid with x and y
+c  axes directed north and east, respectively.  z axis is down.
+c  Distance units irrelevant but must be consistent.  Requires
+c  subroutines FOURN, DIRCOS, KVALUE, and MFILT.
+c
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c         (NOTE: Both nx and ny must be powers of two.)
+c    mag  - a one-dimensional real array containing the
+c         two-dimensional magnetization (in A/m).  Elements should
+c         be in order of west to east, then south to north (i.e.,
+c         element 1 is southwest corner, element ny is 
+c         southeast corner, element (nx-1)*ny+1 is northwest
+c         corner, and element ny*nx is northeast corner).
+c    store - a one-dimensional real array used internally.
+c         It should be dimensioned at least 2*nx*ny.
+c    dx - sample interval in the x direction, in km.
+c    dy - sample interval in the y direction, in km.
+c    z1 - depth to top of layer, in km.  Must be > 0.
+c    z2 - depth to bottom of layer, in km.  Must be > z1.
+c    mi - inclination of magnetization, in degrees positive below
+c         horizontal.
+c    md - declination of magnetization, in degrees east of north.
+c    fi - inclination of regional field.
+c    fd - declination of regional field.
+c
+c  Output parameters:
+c    mag - upon output, mag will contain the total-field anomaly,
+c         (in nT) with same orientation as before.
+c
+      complex cmag,mfilt,cmplx
+      real mag,mi,md,mx,my,mz,kx,ky
+      dimension mag(nx*ny),store(2*nx*ny),nn(2)
+      data pi/3.14159265/,t2nt/1.e9/
+      index(i,j,ncol)=(j-1)*ncol+i
+      nn(1)=ny
+      nn(2)=nx
+      ndim=2
+      call dircos(mi,md,0.,mx,my,mz)
+      call dircos(fi,fd,0.,fx,fy,fz)
+      dkx=2.*pi/(nx*dx)
+      dky=2.*pi/(ny*dy)
+      do 10 j=1,nx
+         do 10 i=1,ny
+            ij=index(i,j,ny)
+            store(2*ij-1)=mag(ij)
+   10       store(2*ij)=0.
+      call fourn(store,nn,ndim,-1)
+      do 20 j=1,nx
+         do 20 i=1,ny
+            ij=index(i,j,ny)
+            call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+            cmag=cmplx(store(2*ij-1),store(2*ij))
+            cmag=cmag*mfilt(kx,ky,mx,my,mz,fx,fy,fz,z1,z2)
+            store(2*ij-1)=real(cmag)
+   20       store(2*ij)=aimag(cmag)
+      call fourn(store,nn,ndim,+1)
+      do 30 j=1,ny
+         do 30 i=1,nx
+            ij=index(i,j,ny)
+   30       mag(ij)=store(2*ij-1)*t2nt/(nx*ny)
+      return
+      end
+
+      subroutine kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+c  Subroutine KVALUE finds the wavenumber coordinates of one
+c  element of a rectangular grid from subroutine FOURN.
+c
+c  Input parameters:
+c    i  - index in the kx direction.
+c    j  - index in the ky direction.
+c    nx - dimension of grid in ky direction (a power of two).
+c    ny - dimension of grid in kx direction (a power of two).
+c    dkx - sample interval in the kx direction.
+c    dky - sample interval in the ky direction.
+c
+c  Output parameters:
+c    kx - the wavenumber coordinate in the kx direction.
+c    ky - the wavenumber coordinate in the ky direction.
+c
+      real kx,ky
+      nyqx=nx/2+1
+      nyqy=ny/2+1
+      if(j.le.nyqx)then
+         kx=(j-1)*dkx
+         else
+            kx=(j-nx-1)*dkx
+            end if
+      if(i.le.nyqy)then
+         ky=(i-1)*dky
+         else
+            ky=(i-ny-1)*dky
+            end if
+      return
+      end
+
+      function gfilt(kx,ky,z1,z2)
+c
+c  Function GFILT calculates the value of the gravitational
+c  earth filter at a single (kx,ky) location.
+c
+c  Input parameters:
+c    kx - the wavenumber coordinate in the kx direction, in
+c         units of 1/km.
+c    ky - the wavenumber coordinate in the ky direction, in
+c         units of 1/km.
+c    z1 - the depth to the top of the layer, in km.
+c    z2 - the depth to the bottom of the layer, in km.
+c
+c  Output parameters:
+c    gfilt - the value of the earth filter
+c
+      real kx,ky,k
+      data pi/3.14159265/,gamma/6.67e-11/
+      k=sqrt(kx**2+ky**2)
+      if(k.eq.0.)then
+         gfilt=2.*pi*gamma*(z2-z1)
+         else
+            gfilt=2.*pi*gamma*(exp(-k*z1)-exp(-k*z2))/k
+            end if
+      return
+      end
+
+      function mfilt(kx,ky,mx,my,mz,fx,fy,fz,z1,z2)
+c
+c  Function MFILT calculates the complex value of the earth
+c  filter at a single (kx,ky) location.
+c
+c  Input parameters:
+c    kx - the wavenumber coordinate in the kx direction.
+c    ky - the wavenumber coordinate in the ky direction.
+c    mx - the x direction cosine of the magnetization vector.
+c    my - the y direction cosine of the magnetization vector.
+c    mz - the z direction cosine of the magnetization vector.
+c    fx - the x direction cosine of the regional field vector.
+c    fy - the y direction cosine of the regional field vector.
+c    fz - the z direction cosine of the regional field vector.
+c    z1 - the depth to the top of the layer.
+c    z2 - the depth to the bottom of the layer.
+c
+c  Output parameters:
+c    mfilt - the complex value of the earth filter
+c
+      complex mfilt,thetam,thetaf,cmplx
+      real kx,ky,k,mx,my,mz
+      data pi/3.14159265/,cm/1.e-7/
+      k=sqrt(kx**2+ky**2)
+      if(k.eq.0.)then
+         mfilt=0.
+         else
+            thetam=cmplx(mz,(kx*mx+ky*my)/k)
+            thetaf=cmplx(mz,(kx*fx+ky*fy)/k)
+            mfilt=2.*pi*cm*thetam*thetaf*(exp(-k*z1)-exp(-k*z2))
+            end if
+      return
+      end
+
+      subroutine mtopo(mag,ztop,nx,ny,dx,dy,mi,md,fi,fd,nstop,err
+     &                 store,cstore)
+c 
+c  Subroutine MTOPO calculates the total-field anomaly on a two-
+c  dimensional grid due to an infinite half-space with uneven
+c  top surface and two-dimensional magnetization.  Method
+c  according to Parker (1972, pp. 447-55).
+c  Magnetization is specified on a rectangular grid with x and y
+c  axes directed north and east, respectively.  z axis is down
+c  and anomaly is calculated at z=0; topographic grid should be
+c  arranged accordingly.  Units of distance irrelevant but must be
+c  consistent.  Requires subroutines FOURN, DIRCOS, KVALUE, and FAC.
+c 
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c         (NOTE: Both nx and ny must be powers of two.)
+c    mag  - a one-dimensional real array containing the
+c         two-dimensional magnetization (in A/m).  Elements should
+c         be in order of west to east, then south to north (i.e.,
+c         element 1 is southwest corner, element ny is 
+c         southeast corner, element (nx-1)*ny+1 is northwest
+c         corner, and element ny*nx is northeast corner).
+c    ztop - a one-dimensional real array containing the
+c         topography of the upper surface, in same units as dx
+c         and dy.  Grid layout same as mag.  Note:  z axis is
+c         positive down and anomaly is calculated as z=0.  Array
+c         ztop is modified by subroutine.
+c    store - a one-dimensional real array used internally.
+c         Should be dimensioned at least 2*nx*ny.
+c    cstore - a one-dimensional complex array used internally.
+c         Should be dimensioned at least nx*ny.
+c    dx - sample interval in the x direction.
+c    dy - sample interval in the y direction.
+c    mi - inclination of magnetization, in degrees positive below
+c         horizontal.
+c    md - declination of magnetization, in degrees east of north.
+c    fi - inclination of regional field.
+c    fd - declination of regional field.
+c    nstop - maximum number of iterations to try.
+c    err - convergence criterion.  Iterations stop with the
+c         contribution of the last term to the summation is less
+c         than err times the contribution of all previous terms.
+c 
+c  Output parameters:
+c    mag - upon output, mag contains the total-field anomaly
+c         (in nT) with same grid orientation as before.
+c
+      dimension mag(nx*ny),ztop(nx*ny),store(2*nx*ny),cstore(nx*ny),
+     &                 nn(2)
+      real mag,mi,md,mx,my,mz,kx,ky,k
+      complex cmplx,cstore,cstep,thetam,thetaf
+      data pi/3.14159265/,t2nt/1.e9/,cm/1.e-7/
+      index(i,j,ncol)=(j-1)*ncol+i
+      nn(1)=ny
+      nn(2)=nx
+      ndim=2
+      call dircos(mi,md,0.,mx,my,mz)
+      call dircos(fi,fd,0.,fx,fy,fz)
+      dkx=2.*pi/(nx*dx)
+      dky=2.*pi/(ny*dy)
+      ztpmax=-1.e20
+      ztpmin= 1.e20
+      do 1 j=1,nx
+         do 1 i=1,ny
+            ij=index(i,j,ny)
+            ztpmax=amax1(ztpmax,ztop(ij))
+    1       ztpmin=amin1(ztpmin,ztop(ij))
+      ztpmed=ztpmin+(ztpmax-ztpmin)/2.
+      do 2 j=1,nx
+         do 2 i=1,ny
+            ij=index(i,j,ny)
+            ztop(ij)=ztop(ij)-ztpmed
+    2       cstore(ij)=0.
+      write(*,100)
+  100 format(/,' Ratio = contribution of Nth term divided by',/,
+     &         '         contribution of 0 through N-1 terms',//,
+     &         '   N  | Ratio',/,
+     &         ' -----|---------')
+      n=-1
+    3 n=n+1
+      do 4 j=1,nx
+         do 4 i=1,ny
+            ij=index(i,j,ny)
+            store(2*ij-1)=mag(ij)*ztop(ij)**n
+    4       store(2*ij)=0.
+      call fourn(store,nn,ndim,-1)
+      abnew=0.
+      abold=0.
+      do 5 j=1,nx
+         do 5 i=1,ny
+            ij=index(i,j,ny)
+            call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+            k=sqrt(kx**2+ky**2)
+            arg=((-k)**n)*exp(-k*ztpmed)/fac(n)
+            cstep=arg*cmplx(store(2*ij-1),store(2*ij))
+            abnew=abnew+cabs(cstep)
+            abold=abold+cabs(cstore(ij))
+    5       cstore(ij)=cstore(ij)+cstep
+      if(n.eq.0.)go to 3
+      ratio=abnew/abold
+      write(*,101)n,ratio
+  101 format(1x,i5,g10.3)
+      if(ratio.gt.err.and.n.lt.nstop)go to 3
+      do 6 j=1,nx
+         do 6 i=1,ny
+            ij=index(i,j,ny)
+            if(ij.eq.1)then
+                 store(2*ij-1)=0.
+               store(2*ij)=0.
+               else
+                  call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+                  k=sqrt(kx**2+ky**2)
+                  thetam=cmplx(mz,(mx*kx+my*ky)/k)
+                  thetaf=cmplx(fz,(fx*kx+fy*ky)/k)
+                  cstore(ij)=2.*pi*cm*thetam*thetaf*cstore(ij)
+                  store(2*ij-1)=real(cstore(ij))
+                  store(2*ij)=aimag(cstore(ij))
+                  end if
+    6       continue
+      call fourn(store,nn,ndim,+1)
+      do 7 j=1,nx
+         do 7 i=1,ny
+            ij=index(i,j,ny)
+    7       mag(ij)=store(2*ij-1)*t2nt/(nx*ny)
+      return
+      end
+
+      subroutine contin(grid,nx,ny,dx,dy,dz,store)
+c
+c  Subroutine CONTIN upward continues gridded potential-field
+c  data using the following steps:  (1) Fourier transform the field,
+c  (2) multiply by the continuation filter, and (3) inverse Fourier
+c  transform the product.  Field values are specified on a
+c  rectangular grid with x and y axes directed north and east,
+c  respectively.  z axis is down.  North is arbitrary.  Requires
+c  subroutines FOURN and KVALUE.
+c
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c         (NOTE:  both nx and ny must be powers of two.)
+c    grid - a one-dimensional real array containing the
+c         two-dimensional magnetization (in A/m).  Elements should
+c         be in order of west to east, then south to north (i.e.,
+c         element 1 is southwest corner, element ny is 
+c         southeast corner, element (nx-1)*ny+1 is northwest
+c         corner, and element ny*nx is northeast corner).
+c    store - a one-dimensional real array used internally.
+c         It should be dimensioned at least 2*nx*ny in the
+c         calling progam
+c    dx - sample interval in the x direction.
+c    dy - sample interval in the y direction.
+c    dz - continuation distance,in same units as dx and dy.  Should
+c         be greater than zero for upward continuation.
+c
+c  Output parameters:
+c    grid - upon output, grid contains the upward-continued
+c         potential field with same orientation as before.
+c
+      dimension grid(nx*ny),store(2*nx*ny),nn(2)
+      real kx,ky,k
+      complex cgrid,cmplx
+      data pi/3.14159265/
+      index(i,j,ncol)=(j-1)*ncol+i
+      nn(1)=ny
+      nn(2)=nx
+      ndim=2
+      dkx=2.*pi/(nx*dx)
+      dky=2.*pi/(ny*dy)
+      do 10 j=1,nx
+         do 10 i=1,ny
+            ij=index(i,j,ny)
+            store(2*ij-1)=grid(ij)
+   10       store(2*ij)=0.
+      call fourn(store,nn,ndim,-1)
+      do 20 j=1,nx
+         do 20 i=1,ny
+            ij=index(i,j,ny)
+            call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+            k=sqrt(kx**2+ky**2)
+            cont=exp(-k*dz)
+            cgrid=cmplx(store(2*ij-1),store(2*ij))*cont
+            store(2*ij-1)=real(cgrid)
+   20       store(2*ij)=aimag(cgrid)
+      call fourn(store,nn,ndim,+1)
+      do 30 j=1,nx
+         do 30 i=1,ny
+            ij=index(i,j,ny)
+   30       grid(ij)=store(2*ij-1)/(nx*ny)
+      return
+      end
+
+      subroutine verder(grid,nx,ny,dx,dy,norder,store)
+c
+c  Subroutine VERDER calculates the vertical derivative of
+c  gridded potential-field data using the following steps:
+c  (1) Fourier transform the field, (2) multiply by the vertical-
+c  derivative filter, and (3) inverse Fourier transform the
+c  with x and y axes directed north and east, respectively.
+c  z axis is down.  North is arbitrarily.  Requires subroutines
+c  FOURN and KVALUE.
+c
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c         (NOTE:  both nx and ny must be powers of two.)
+c    grid - a one-dimensional real array containing the
+c         two-dimensional magnetization (in A/m).  Elements should
+c         be in order of west to east, then south to north (i.e.,
+c         element 1 is southwest corner, element ny is 
+c         southeast corner, element (nx-1)*ny+1 is northwest
+c         corner, and element ny*nx is northeast corner).
+c    store - a one-dimensional real array used internally.
+c         It should be dimensioned at least 2*nx*ny in the
+c         calling progam
+c    dx - sample interval in the x direction, units irrelevant.
+c    dy - sample interval in the y direction, units irrelevant.
+c    norder - the order of the vertical derivative.
+c
+c  Output parameters:
+c    grid - upon output, grid contains the vertical derivative of
+c         the potential field with same orientation as before.
+c
+      dimension grid(nx*ny),store(2*nx*ny),nn(2)
+      complex cgrid,cmplx
+      real kx,ky,k
+      data pi/3.14159265/
+      index(i,j,ncol)=(j-1)*ncol+i
+      nn(1)=ny
+      nn(2)=nx
+      ndim=2
+      dkx=2.*pi/(nx*dx)
+      dky=2.*pi/(ny*dy)
+      do 10 j=1,nx
+         do 10 i=1,ny
+            ij=index(i,j,ny)
+            store(2*ij-1)=grid(ij)
+   10       store(2*ij)=0.
+      call fourn(store,nn,ndim,-1)
+      do 20 j=1,nx
+         do 20 i=1,ny
+            ij=index(i,j,ny)
+            call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+            k=sqrt(kx**2+ky**2)
+            cgrid=cmplx(store(2*ij-1),store(2*ij))
+            cgrid=cgrid*k**norder
+            store(2*ij-1)=real(cgrid)
+   20       store(2*ij)=aimag(cgrid)
+      call fourn(store,nn,ndim,+1)
+      do 30 j=1,nx
+         do 30 i=1,ny
+            ij=index(i,j,ny)
+   30       grid(ij)=store(2*ij-1)/(nx*ny)
+      return
+      end
+
+      subroutine newvec(grid,nx,ny,dx,dy,fi1,fd1,mi1,md1,fi2,
+     &                  fd2,mi2,md2,store)
+c
+c  Subroutine NEWVEC transforms a gridded total-field anomaly
+c  into a new anomaly with new directions of magnetization and
+c  ambient field.  NEWVEC uses the following steps:  (1) Foureir
+c  transform the field, (2) multiply by the phase filter, and
+c  (3) inverse Fourier transform the product.  Anomaly values
+c  are specified on a rectangular grid with x and y axes
+c  directed north and east, respectively.  z axis is down.
+c  Requires subroutines FOURN, DIRCOS, and KVALUE.
+c
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c         (NOTE:  both nx and ny must be powers of two.)
+c    grid - a one-dimensional real array containing the
+c         two-dimensional magnetization (in A/m).  Elements should
+c         be in order of west to east, then south to north (i.e.,
+c         element 1 is southwest corner, element ny is 
+c         southeast corner, element (nx-1)*ny+1 is northwest
+c         corner, and element ny*nx is northeast corner).
+c    store - a one-dimensional real array used internally.
+c         It should be dimensioned at least 2*nx*ny in the
+c         calling progam
+c    dx - sample interval in the x direction, units irrelevant.
+c    dy - sample interval in the y direction, units irrelevant.
+c    mi1 - original inclination of magnetization, in degrees.
+c    md1 - original declination of magnetization.
+c    fi1 - original inclination of ambient field.
+c    fd1 - original declination of ambient field.
+c    mi2 - new inclination of magnetization.
+c    md2 - new declination of magnetization.
+c    fi2 - new inclination of ambient field.
+c    fd2 - new declination of ambient field.
+c
+c  Output parameters:
+c    grid - upon output, grid contains the transformed total-
+c           field anomaly with same orientation as before.
+c
+      dimension grid(nx*ny),store(2*nx*ny),nn(2)
+      complex cgrid,cmplx,thetam1,thetam2,thetaf1,thetaf2
+     &        cphase
+      real kx,ky,k,mi1,md1,mi2,md2,mx1,my1,mz1,mx2,my2,mz2
+      data pi/3.14159265/
+      index(i,j,ncol)=(j-1)*ncol+i
+      nn(1)=ny
+      nn(2)=nx
+      ndim=2
+      dkx=2.*pi/(nx*dx)
+      dky=2.*pi/(ny*dy)
+      call dircos(mi1,md1,0.,mx1,my1,mz1)
+      call dircos(fi1,fd1,0.,fx1,fy1,fz1)
+      call dircos(mi2,md2,0.,mx2,my2,mz2)
+      call dircos(fi2,fd2,0.,fx2,fy2,fz2)
+      do 10 j=1,nx
+         do 10 i=1,ny
+            ij=index(i,j,ny)
+            store(2*ij-1)=grid(ij)
+   10       store(2*ij)=0.
+      call fourn(store,nn,ndim,-1)
+      do 20 j=1,nx
+         do 20 i=1,ny
+            ij=index(i,j,ny)
+            if(ij.eq.1)then
+               cphase=0.
+               else
+                  call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+                  k=sqrt(kx**2+ky**2)
+                  thetam1=cmplx(mz1,(kx*mx1+ky*my1)/k)
+                  thetaf1=cmplx(fz1,(kx*fx1+ky*fy1)/k)
+                  thetam2=cmplx(mz2,(kx*mx2+ky*my2)/k)
+                  thetaf2=cmplx(fz2,(kx*fx2+ky*fy2)/k)
+                  cphase=thetam2*thetaf2/(thetam1*thetaf1)
+                  end if
+            cgrid=cmplx(store(2*ij-1),store(2*ij))
+            cgrid=cgrid*cphase
+            store(2*ij-1)=real(cgrid)
+   20       store(2*ij)=aimag(cgrid)
+      call fourn(store,nn,ndim,+1)
+      do 30 j=1,nx
+         do 30 i=1,ny
+            ij=index(i,j,ny)
+   30       grid(ij)=store(2*ij-1)/(nx*ny)
+      return
+      end
+
+      subroutine pseudo(grid,nx,ny,dx,dy,fi,fd,mi,md,store)
+c
+c  Subroutine PSEUDO transforms a gridded total-field anomaly
+c  into a pseudogravity anomaly using the following steps:
+c  (1) Fourier transform the field, (2) multiply by the phase
+c  filter, and (3) inverse Fourier transform the product.  Anomaly
+c  values are specified on a rectangular grid with x and y axes
+c  directed north and east, respectively.  z axis is down.  Ratio
+c  of density to magnetization assumed to be 100 kg/(m**3) per
+c  1 A/m.  Requires subroutine FOURN, DIRCOS, and KVALUE.
+c
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c         (NOTE:  both nx and ny must be powers of two.)
+c    grid - a one-dimensional real array containing the
+c         two-dimensional total-field anomaly in nT.  Elements
+c         should be in order of west to east, then south to north 
+c         (i.e., element 1 is southwest corner, element ny is 
+c         southeast corner, element (nx-1)*ny+1 is northwest
+c         corner, and element ny*nx is northeast corner).
+c    store - a one-dimensional real array used internally.
+c         Should be dimensioned at least 2*nx*ny.
+c    dx - sample interval in the x direction, in km.
+c    dy - sample interval in the y direction, in km.
+c    mi - inclination of magnetization, in degrees.
+c    md - declination of magnetization.
+c    fi - inclination of ambient field.
+c    fd - declination of ambient field.
+c
+c  Output parameters:
+c    grid - upon output, grid contains the pseudogravity anomaly
+c         in mGal with same orientation as before.
+c
+      dimension grid(nx*ny),store(2*nx*ny),nn(2)
+      complex cgrid,cmplx,thetam,thetaf,cpsgr
+      real kx,ky,k,mi,md,mx,my,mz,mag,km2m
+      data cm/1.e-7/,gamma/6.67e-11/,t2nt/1.e9/,si2mg/1.e5/
+      data pi/3.14159265/,rho/100./,mag/1./,km2m/1.e3/
+      index(i,j,ncol)=(j-1)*ncol+i
+      const=gamma*rho*si2mg*km2m/(cm*mag*t2nt)
+      nn(1)=ny
+      nn(2)=nx
+      ndim=2
+      dkx=2.*pi/(nx*dx)
+      dky=2.*pi/(ny*dy)
+      call dircos(mi,md,0.,mx,my,mz)
+      call dircos(fi,fd,0.,fx,fy,fz)
+      do 10 j=1,nx
+         do 10 i=1,ny
+            ij=index(i,j,ny)
+            store(2*ij-1)=grid(ij)
+   10       store(2*ij)=0.
+      call fourn(store,nn,ndim,-1)
+      do 20 j=1,nx
+         do 20 i=1,ny
+            ij=index(i,j,ny)
+            if(ij.eq.1)then
+               cphase=0.
+               else
+                  call kvalue(i,j,nx,ny,dkx,dky,kx,ky)
+                  k=sqrt(kx**2+ky**2)
+                  thetam=cmplx(mz,(mx*kx+my*ky)/k)
+                  thetaf=cmplx(fz,(fx*kx+fy*ky)/k)
+                  cpsgr=1./(thetam*thetaf*k)
+                  end if
+            cgrid=cmplx(store(2*ij-1),store(2*ij))
+            cgrid=cgrid*cpsgr
+            store(2*ij-1)=real(cgrid)
+   20       store(2*ij)=aimag(cgrid)
+      call fourn(store,nn,ndim,+1)
+      do 30 j=1,nx
+         do 30 i=1,ny
+            ij=index(i,j,ny)
+   30       grid(ij)=store(2*ij-1)*const/(nx*ny)
+      return
+      end
+
+      subroutine hgrad(grid,nx,ny,dx,dy,store)
+c
+c  Subroutine HGRAD calculates the maximum horizontal
+c  gradient of a two-dimensional function using simple finite-
+c  difference relations.  Function is specified on a
+c  rectangular grid with x and y axes directed north and east,
+c  respectively.  North is arbitrary.
+c
+c  Input parameters:
+c    nx - number of elements in the south-to-north direction.
+c    ny - number of elements in the west-to-east direction.
+c    grid - a one-dimensional real array containing the
+c         two-dimensional function.  Elements should
+c         be in order of west to east, then south to north (i.e.,
+c         element 1 is southwest corner, element ny is 
+c         southeast corner, element (nx-1)*ny+1 is northwest
+c         corner, and element ny*nx is northeast corner).
+c    dx - sample interval in the x direction, in km.
+c    dy - sample interval in the y direction, in km.
+c    store - a one-dimensional real array used internally.
+c         Should be dimensioned at least nx*ny in the calling
+c         program
+c
+c  Output parameters:
+c    grid - upon output, grid contains the maximum horizontal
+c           gradient with same orientation as before.
+c
+      dimension grid(nx*ny),store(nx*ny)
+      index(i,j,ncol)=(j-1)*ncol+i
+      dx2=2.*dx
+      dy2=2.*dy
+      do 10 j=1,nx
+         jm1=j-1
+         if(jm1.lt.1)jm1=1
+         jp1=j+1
+         if(jp1.gt.nx)jp1=nx
+         do 10 i=1,ny
+            im1=i-1
+            if(im1.lt.1)im1=1
+            ip1=i+1
+            if(ip1.gt.ny)imp=ny
+            dfdx=(grid(index(ip1,j,ny))-grid(index(im1,j,ny)))/dx2
+            dfdy=(grid(index(i,jp1,ny))-grid(index(i,jm1,ny)))/dy2
+            store(index(i,j,ny))=sqrt(dfdx**2+dfdy**2)
+   10       continue
+      do 20 i=1,nx*ny
+   20 grid(i)=store(i)
+      return
+      end
+
+      subroutine expand(grid,ncol,nrow,grid2,ncol2,nrow2)
+c
+c  Subroutine EXPAND adds "tapered" rows and columns to a
+c  grid.  Input grid(i,j), i=1,2,...,ncol, j=1,2,...,nrow, is
+c  modified as follows:
+c
+c  (1) Each row is expanded in length from ncol to ncol2.
+c      New elements of row j linearly change in value from
+c      grid(ncol,j) to grid(1,j).
+c  (2) Each column is expanded in length from nrow to nrow2.
+c      New elements of column 1 linearly change in value
+c      from grid(i,nrow) to grid(i,1).
+c  (3) All elements at i < or = to ncol and j < or = nrow
+c      are left unchanged.
+c
+c  Input parameters:
+c    grid -        one-dimensional real array representing
+c                  a two-dimensional grid.
+c    ncol,nrow -   dimensions of input grid.
+c    ncol2,nrow2 - dimensions of output grid (grid2).
+c                  ncol2 must be > ncol; nrow2 must be > nrow
+c
+c  Output parameters:
+c    grid2 -       one-dimensional real array representing
+c                  a two-dimension grid, as described earlier.
+c
+      dimension grid(ncol*nrow),grid2(ncol2*nrow2)
+      index(i,j,ncol)=(j-1)*ncol+i
+      do 10 j=1,nrow
+         do 10 i=1,ncol
+            ij=index(i,j,ncol)
+            ij2=index(i,j,ncol2)
+   10       grid2(ij2)=grid(ij)
+      if(ncol2.gt.ncol)then
+         do 20 j=1,nrow
+            i1=index(1,j,ncol2)
+            i2=index(ncol,j,ncol2)
+            i3=index(ncol2,j,ncol2)
+            step=(grid2(i1)-grid2(i2))/(ncol2-ncol+1)
+            do 20 i=ncol+1,ncol2
+               ij=index(i,j,ncol2)
+   20          grid2(ij)=grid2(i2)+step*(i-ncol)
+        else
+           pause 'EXPAND:  ncol2.le.ncol'
+           end if
+      if(nrow2.gt.nrow)then
+         do 30 i=1,ncol2
+            j1=index(i,1,ncol2)
+            j2=index(i,nrow,ncol2)
+            j3=index(i,nrow2,ncol2)
+            step=(grid2(j1)-grid2(j2))/(nrow2-nrow+1)
+            do 30 j=nrow+1,nrow2
+               ij=index(i,j,ncol2)
+   30          grid2(ij)=grid2(j2)+step*(j-nrow)
+         else
+            pause 'EXPAND:  nrow2.le.nrow'
+            end if
       return
       end
